@@ -136,29 +136,24 @@ as the private witness, gated by physically-motivated behavioral thresholds (§6
 produce a "typed by a human, on this specific registered device, during this specific
 session" claim.
 
-### 2.4 Trust without consensus, and unclonable identity
+### 2.4 Unclonable identity and hardware-anchored commitments
 
 Three pieces of prior work — by this project's own founder, predating Sur's
 implementation — shaped Sur's architecture directly enough to cite as primary design
-influences rather than background reading:
+influences rather than background reading. (Sur Chain itself is secured by standard
+Byzantine-fault-tolerant consensus — CometBFT, the Cosmos SDK's consensus engine, §3 —
+so the influences below are about identity and device-level trust, not an alternative to
+chain consensus.)
 
 - **"Unreplicable Device IDs"** [10] argues that blockchain's dependence on live
   connectivity excludes anyone without reliable internet access, and proposes
   unclonable, unreplicable device identifiers — built from Physical Unclonable Functions
   or, more practically today, from hardware-backed key material — as an offline-capable
   alternative trust anchor for identity and transactions. Sur's device identity (§4)
-  is a direct, shipping instance of this idea: a device-bound keypair standing in for a
-  network consensus round as the thing two parties agree to trust.
-- **"Bringing Trust to the Edge: Secure Execution Without Consensus"** [11] makes the
-  case that not every trust decision needs a blockchain's consensus mechanism — a
-  hardware Trusted Execution Environment can provide an equivalent, locally-verifiable
-  execution guarantee for many purposes, while noting the real limitation: *"trust only
-  exists when multiple parties agree on a shared truth,"* so a purely local guarantee
-  still needs a way to be checked by someone else. Sur's architecture reflects exactly
-  this division of labor: the Secure Enclave / App Attest layer gives *local* liveness
-  and non-cloning guarantees on the device; the zero-knowledge proof and Sur Chain give
-  the *externally checkable* guarantee that a hardware claim alone cannot provide.
-- **"Commitment Schemes + Secure Enclave: A Powerful Combination"** [12] proposes that
+  is a direct, shipping instance of this idea: a device-bound keypair as the thing two
+  parties agree to trust for authorship, independent of whether the device can reach
+  the network at that moment.
+- **"Commitment Schemes + Secure Enclave: A Powerful Combination"** [11] proposes that
   *"just as we trust the code running on a blockchain, we can also trust the code
   executed within a Secure Enclave,"* and that pairing a Secure Enclave with a
   cryptographic commitment scheme can reproduce blockchain-style behavioral guarantees
@@ -166,7 +161,7 @@ influences rather than background reading:
   blinding_factor)`, held in a Merkle tree the chain maintains — is precisely this
   pairing: the Secure Enclave anchors the key material; the Poseidon commitment is what
   makes that key material provable in zero knowledge later.
-- **"EthSafari: ZK-Based KYC"** [13] draws a distinction Sur's own documentation leans
+- **"EthSafari: ZK-Based KYC"** [12] draws a distinction Sur's own documentation leans
   on throughout: *data integrity* ("the accuracy, completeness, and consistency of data
   as it is stored") versus *computational integrity* ("the guarantee that the output of
   a computation is correct"), and argues that zero-knowledge proofs let a verifier
@@ -208,6 +203,13 @@ app via a bridging header — not a Swift module, since a static-lib XCFramework
 modulemap is not reliably importable); `SurChain/` (the Cosmos SDK application chain);
 `sur-evm-contracts/` (Ethereum settlement contracts); and `sur-protocol-docs/` (this
 document and the engineering roadmap it is drawn from).
+
+**Consensus.** Sur Chain is secured by standard Byzantine-fault-tolerant consensus —
+CometBFT, the same consensus engine used across the Cosmos ecosystem — so block
+finality and validator agreement rely on established, widely-deployed BFT consensus,
+not on any of Sur's own cryptography. The zero-knowledge proofs and commitments
+described in this document verify *what a device attested*; they are not a substitute
+for, or an alternative to, chain-level consensus.
 
 **Chain modules.** Sur Chain is built with Cosmos SDK v0.53 and Ignite CLI, and runs the
 standard SDK module set — `auth`, `bank`, `staking`, `distribution`, `mint`, `slashing`,
@@ -371,7 +373,7 @@ with its honest origin label rather than a blanket "verified" claim.
 
 ### 6.1 Circuit overview
 
-The `AttestationCircuit` is a gnark [14] Groth16 circuit over the BN254 curve. It proves,
+The `AttestationCircuit` is a gnark [13] Groth16 circuit over the BN254 curve. It proves,
 in zero knowledge, that:
 
 1. The prover knows a device key whose Poseidon commitment is a member of the on-chain
@@ -435,15 +437,15 @@ inter-keystroke interval (IKI) window of `iki_min` ≥ 20 ms, `iki_max` ≤ 2000
 best understood as a **plausibility gate**, not a biometric identity proof: they raise
 the cost of forging a session by requiring an adversary to match a joint numerical
 envelope, the same false-accept/false-reject standard used throughout the
-keystroke-dynamics literature [15] — never a certainty claim.
+keystroke-dynamics literature [14] — never a certainty claim.
 
 **The 20 ms floor** sits below essentially all recorded human bigram timings. Large-scale
 typing corpora — Dhakal et al., *"Observations on Typing from 136 Million Keystrokes,"*
-CHI 2018 [16], spanning roughly 168,000 participants — put average skilled-typist speed
+CHI 2018 [15], spanning roughly 168,000 participants — put average skilled-typist speed
 near 52 WPM, corresponding to mean inter-key intervals well above 100 ms; even at
 recorded extremes (sustained bursts near 200+ WPM) average IKIs land in the 35–40 ms
 range. Reaction-time floors from Card, Moran & Newell's Model Human Processor
-(*The Psychology of Human-Computer Interaction*, 1983) [17] place simple motor response
+(*The Psychology of Human-Computer Interaction*, 1983) [16] place simple motor response
 in the 70–100 ms range. Sur's 20 ms cutoff is therefore a *deliberately permissive* absolute floor —
 biased toward accepting real-but-fast typists rather than rejecting them — and functions
 as a trip-wire against crude scripted/automated input rather than a tight anti-bot
@@ -613,11 +615,11 @@ anywhere live is a separate, still-outstanding step on top of that (§13).
 Two further settlement targets are designed but not yet built:
 
 - **Starknet:** a Cairo contract submits the (eventual, §9) STARK proof to the
-  Integrity verifier's fact registry [18] and records the verified epoch root —
+  Integrity verifier's fact registry [17] and records the verified epoch root —
   the only settlement path that stays fully post-quantum end-to-end, since Starknet
   verifies STARKs natively and cheaply.
 - **Solana:** an Anchor program verifies a Groth16-wrapped proof via Solana's
-  `alt_bn128` syscalls, using the `groth16-solana` library [19], and stores the epoch
+  `alt_bn128` syscalls, using the `groth16-solana` library [18], and stores the epoch
   root in a program-derived account (PDA).
 
 ---
@@ -637,7 +639,7 @@ make everywhere. The trade-off that *is* real and unavoidable is narrower:
 
 Starknet verifies STARKs natively, so nothing is sacrificed there. Ethereum and Solana
 cannot verify a STARK cheaply today, so **Sur wraps the STARK in a Groth16 proof** for
-those two chains specifically — the same approach used by SP1 [20] and RISC Zero. That
+those two chains specifically — the same approach used by SP1 [19] and RISC Zero. That
 wrap is the *only* place post-quantum security is given up, and only on those two chains.
 The post-quantum boundary therefore sits at the aggregation layer: the per-device proof
 stays a fast, fixed-key Groth16 proof (appropriate for a phone's compute budget); a
@@ -836,16 +838,15 @@ exact problem it exists to solve.
 [8]: Zero-knowledge proof — overview and formal definitions. [en.wikipedia.org/wiki/Zero-knowledge_proof](https://en.wikipedia.org/wiki/Zero-knowledge_proof)  
 [9]: Zero-Knowledge Proofs Demystified: A Practical Code Guide for Developers. [medium.com/@ancilartech](https://medium.com/@ancilartech/zero-knowledge-proofs-demystified-a-practical-code-guide-for-developers-3f94682a852b)  
 [10]: El Mathe (Eliel), "Unreplicable Device IDs." [eliel.nfinic.com](https://eliel.nfinic.com/2025/03/05/unreplicable-device-ids/)  
-[11]: El Mathe (Eliel), "Bringing Trust to the Edge: Secure Execution Without Consensus." [eliel.nfinic.com](https://eliel.nfinic.com/2025/04/19/bringing-trust-to-the-edge-secure-execution-without-consensus/)  
-[12]: El Mathe (Eliel), "Commitment Schemes + Secure Enclave: A Powerful Combination." [eliel.nfinic.com](https://eliel.nfinic.com/2025/03/22/commitment-schemes-secure-enclave-a-powerful-combination/)  
-[13]: El Mathe (Eliel), "EthSafari Discussion on ZK-Based KYC." [eliel.nfinic.com](https://eliel.nfinic.com/2025/09/16/ethsafari-discussion-on-zk-based-kyc/)  
-[14]: gnark — a fast zk-SNARK library written in Go (ConsenSys). [github.com/Consensys/gnark](https://github.com/Consensys/gnark)  
-[15]: Killourhy, K. S., and Maxion, R. A. "Comparing Anomaly-Detection Algorithms for Keystroke Dynamics." IEEE/IFIP International Conference on Dependable Systems and Networks (DSN), 2009.  
-[16]: Dhakal, V., Feit, A. M., Kristensson, P. O., and Oulasvirta, A. "Observations on Typing from 136 Million Keystrokes." ACM CHI Conference on Human Factors in Computing Systems, 2018.  
-[17]: Card, S. K., Moran, T. P., and Newell, A. *The Psychology of Human-Computer Interaction.* Lawrence Erlbaum Associates, 1983. (Model Human Processor reaction-time estimates.)  
-[18]: Integrity (Herodotus / StarkWare) — Cairo STARK verifier on Starknet. [github.com/HerodotusDev/integrity](https://github.com/HerodotusDev/integrity)  
-[19]: groth16-solana (Light Protocol) — Groth16 verification via Solana `alt_bn128` syscalls. [github.com/Lightprotocol/groth16-solana](https://github.com/Lightprotocol/groth16-solana)  
-[20]: SP1 (Succinct) — STARK proving, recursive compression, and Groth16/PLONK wrap for on-chain verification. [docs.succinct.xyz](https://docs.succinct.xyz/docs/sp1/generating-proofs/proof-types)  
+[11]: El Mathe (Eliel), "Commitment Schemes + Secure Enclave: A Powerful Combination." [eliel.nfinic.com](https://eliel.nfinic.com/2025/03/22/commitment-schemes-secure-enclave-a-powerful-combination/)  
+[12]: El Mathe (Eliel), "EthSafari Discussion on ZK-Based KYC." [eliel.nfinic.com](https://eliel.nfinic.com/2025/09/16/ethsafari-discussion-on-zk-based-kyc/)  
+[13]: gnark — a fast zk-SNARK library written in Go (ConsenSys). [github.com/Consensys/gnark](https://github.com/Consensys/gnark)  
+[14]: Killourhy, K. S., and Maxion, R. A. "Comparing Anomaly-Detection Algorithms for Keystroke Dynamics." IEEE/IFIP International Conference on Dependable Systems and Networks (DSN), 2009.  
+[15]: Dhakal, V., Feit, A. M., Kristensson, P. O., and Oulasvirta, A. "Observations on Typing from 136 Million Keystrokes." ACM CHI Conference on Human Factors in Computing Systems, 2018.  
+[16]: Card, S. K., Moran, T. P., and Newell, A. *The Psychology of Human-Computer Interaction.* Lawrence Erlbaum Associates, 1983. (Model Human Processor reaction-time estimates.)  
+[17]: Integrity (Herodotus / StarkWare) — Cairo STARK verifier on Starknet. [github.com/HerodotusDev/integrity](https://github.com/HerodotusDev/integrity)  
+[18]: groth16-solana (Light Protocol) — Groth16 verification via Solana `alt_bn128` syscalls. [github.com/Lightprotocol/groth16-solana](https://github.com/Lightprotocol/groth16-solana)  
+[19]: SP1 (Succinct) — STARK proving, recursive compression, and Groth16/PLONK wrap for on-chain verification. [docs.succinct.xyz](https://docs.succinct.xyz/docs/sp1/generating-proofs/proof-types)  
 
 ---
 
