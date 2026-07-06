@@ -25,9 +25,10 @@ BN254) proves that a piece of text was produced by a human typing on a registere
 under physically-grounded behavioral constraints, without revealing the keystrokes, the
 device's identity, or the user's identity. A Cosmos SDK application chain, **Sur Chain**,
 verifies these proofs, maintains a privacy-preserving identity registry, and aggregates
-accepted attestations into a compact Merkle commitment. That commitment is settled to
-public blockchains — live today on Ethereum, planned on Starknet and Solana — so that no
-single party controls the record of what has been attested. Non-ZK content types (photos,
+accepted attestations into a compact Merkle commitment. That commitment is designed to
+settle to public blockchains — an Ethereum contract is implemented and tested today,
+with Starknet and Solana planned next — so that no single party controls the record of
+what has been attested. Non-ZK content types (photos,
 video, audio, declared/AI-authored text) are handled through a lighter device-signed
 declaration scheme with an explicit, honestly-labeled provenance class, so the system
 never overstates what it has actually proven.
@@ -196,8 +197,8 @@ SUR CHAIN  (Cosmos SDK — aggregation layer)
                     │
                     ▼
 SETTLEMENT
-  Ethereum   AttestationSettlement.sol — LIVE            (Groth16 wrap)
-  Solana     Anchor + groth16-solana — planned            (Groth16 wrap)
+  Ethereum   AttestationSettlement.sol — tested, not deployed (Groth16 wrap)
+  Solana     Anchor + groth16-solana — planned               (Groth16 wrap)
   Starknet   Integrity verifier + Cairo — planned      (native STARK, PQ)
 ```
 
@@ -572,11 +573,13 @@ accepted attestations at query time, not yet chunked into discrete, closed settl
 epochs — true epoch windowing (reusing the chain's existing `x/epochs` module to mark a
 batch closed) is designed but not yet wired up.
 
-### 8.3 Ethereum settlement — live today
+### 8.3 Ethereum settlement — implemented and tested, not yet deployed
 
-`AttestationSettlement.sol` is deployed and tested (8 passing Foundry tests). A
-settler-gated relayer periodically reads the current `AggregateRoot` from the chain and
-calls:
+`AttestationSettlement.sol` is written and passes 8 Foundry tests against local test
+infrastructure — it has **not** been deployed to Ethereum mainnet or a public testnet,
+and no attestation has actually been settled on Ethereum yet. The design is for a
+settler-gated relayer to periodically read the current `AggregateRoot` from the chain
+and call:
 
 ```solidity
 function submitCheckpoint(
@@ -595,14 +598,15 @@ function verifyInclusion(
 
 `verifyInclusion` reimplements the identical sorted-pair keccak folding as the chain's
 `merkleProof`/`merkleRoot` (deliberately dependency-free — the contract vendors no
-OpenZeppelin, only `forge-std` for tests), so a checkpoint settled on Ethereum can be
-checked against an inclusion proof entirely on-chain, by anyone, with no further trust in
-Sur Chain's relayer beyond the one-time act of publishing the root itself. **Trust model,
-stated plainly:** the relayer is trusted to publish the *correct* root (it is a
-"settler"-gated address, not permissionless); inclusion checking against a published root
-is fully trustless. Closing that remaining trust gap — making the root itself
-trustless, so nobody has to trust the relayer at all — is exactly what Stage 3 (§9, §12)
-is for.
+OpenZeppelin, only `forge-std` for tests), so that once a checkpoint is settled on
+Ethereum, it will be checkable against an inclusion proof entirely on-chain, by anyone,
+with no further trust in Sur Chain's relayer beyond the one-time act of publishing the
+root itself. **Trust model, stated plainly:** the relayer is trusted to publish the
+*correct* root (it is designed as a "settler"-gated address, not permissionless);
+inclusion checking against a published root is designed to be fully trustless. Closing
+the remaining trust gap — making the root itself trustless, so nobody has to trust the
+relayer at all — is exactly what Stage 3 (§9, §12) is for; deploying this contract
+anywhere live is a separate, still-outstanding step on top of that (§13).
 
 ### 8.4 Starknet and Solana — planned
 
@@ -643,9 +647,11 @@ chains that need it.
 
 This design point — STARK proving and aggregation, Groth16 wrap only where a chain
 demands it — is Stage 3 of the roadmap (§12) and is not yet built; the honest status
-today is that the per-device Groth16 layer is live and tested, and the aggregation layer
-settling to Ethereum is live and tested, but the *aggregate* proof root currently rests
-on a trusted relayer rather than a recursively-verified STARK.
+today is that the per-device Groth16 layer is live and tested on Sur Chain, and the
+on-chain aggregation logic that would feed Ethereum settlement is implemented and
+tested, but the Ethereum contract itself is not deployed anywhere live (§8.3) and the
+*aggregate* proof root design rests on a trusted relayer rather than a
+recursively-verified STARK.
 
 ---
 
@@ -674,8 +680,9 @@ the way, say, HMAC-SHA256 has under weaker assumptions. This is an accepted, doc
 tradeoff made for in-circuit efficiency across the ZK industry, not unique to Sur, and is
 stated here rather than left implicit.
 
-**Post-quantum status.** Argued in detail in §9: the device proof and today's Ethereum
-settlement path are not post-quantum; the Starknet settlement path, once built, will be.
+**Post-quantum status.** Argued in detail in §9: the device proof is not post-quantum
+today, and the designed Ethereum settlement path (implemented, tested, not yet deployed)
+will not be either; the Starknet settlement path, once built, will be.
 
 **Privacy boundary.** Argued in detail in §4.4: device-to-attestation linkability is
 intentional; device-to-person linkability is the thing the architecture avoids, with one
@@ -749,7 +756,7 @@ increment rather than a single big-bang release.
 | 1 | A single device proof verifies end-to-end: fixed Groth16 proving/verifying key, real on-chain verification (replacing an earlier always-true placeholder), correct identity Merkle root maintenance, fixed 256-byte EIP-197 proof wire format | DONE (tested) |
 | 2 | Epoch aggregation: accepted attestations folded into a keccak256 sorted-pair Merkle root, exposed via `AggregateRoot` / `MerkleProof` | DONE (tested; running-snapshot root, discrete epoch windowing still pending) |
 | 3 | SP1 Rust batch prover: recursively verify an epoch's device proofs inside a zkVM, emit a post-quantum STARK, Groth16-wrap for EVM/Solana | PENDING |
-| 4 | Settlement contracts on three chains | Ethereum DONE (tested, 8 Foundry tests) · Starknet pending · Solana pending |
+| 4 | Settlement contracts on three chains | Ethereum: contract written & tested (8 Foundry tests), not deployed · Starknet pending · Solana pending |
 | 5 | Full completeness/soundness test matrix across every layer; zero-knowledge and post-quantum analysis reconciled against the shipped implementation | PENDING (this document is part of that reconciliation) |
 
 ---
@@ -762,10 +769,13 @@ Consistent with the standard this project holds itself to elsewhere, here is wha
 - **The committed Groth16 key is a development key** from a single local trusted setup.
   Production use requires a multi-party trusted-setup ceremony; only the key bytes
   change, not the circuit or any other code.
-- **The aggregate root is relayer-trusted, not yet trustless.** Until the SP1 batch
-  prover (Stage 3) lands, anyone verifying Ethereum settlement is trusting the relayer
-  to have published the chain's actual current root, not a recursively-verified proof of
-  it.
+- **The Ethereum settlement contract is not deployed anywhere live** — it exists and
+  passes its test suite against local infrastructure only; no attestation has been
+  settled on a real Ethereum network yet (§8.3).
+- **The aggregate root design is relayer-trusted, not yet trustless.** Even once
+  deployed, and until the SP1 batch prover (Stage 3) lands, anyone verifying Ethereum
+  settlement would be trusting the relayer to have published the chain's actual current
+  root, not a recursively-verified proof of it.
 - **The SP1 batch prover requires real RISC-V proving compute** and has not been built
   yet; it runs off-chain and is not a small undertaking.
 - **Settlement contracts are validated against local/test infrastructure.** Mainnet or
@@ -800,13 +810,15 @@ moment of creation, using cryptography and hardware the device already has. A
 zero-knowledge circuit turns typing behavior into a proof without ever revealing the
 behavior itself; a device identity model built from ideas about unclonable device
 identifiers and enclave-anchored commitment schemes keeps that proof pseudonymous by
-default; and a Cosmos application chain aggregates and settles the result to public
-blockchains, so no single company gets to be the arbiter of what counts as real. Not
+default; and a Cosmos application chain aggregates the result and is designed to settle
+it to public blockchains, so that no single company gets to be the arbiter of what
+counts as real. Not
 every content type can carry the same strength of evidence yet, and the system says so
-explicitly rather than papering over the difference. The remaining work — a
-recursively-verified, post-quantum aggregate proof; Starknet and Solana settlement; a
-closed transaction-sender privacy gap; a fully specified `human_score` formula; and a
-fully specified mainnet token launch — is listed above without euphemism, because a
+explicitly rather than papering over the difference. The remaining work — actually
+deploying the tested Ethereum settlement contract; a recursively-verified, post-quantum
+aggregate proof; Starknet and Solana settlement; a closed transaction-sender privacy
+gap; a fully specified `human_score` formula; and a fully specified mainnet token
+launch — is listed above without euphemism, because a
 provenance protocol that overstates its own guarantees would be working against the
 exact problem it exists to solve.
 
